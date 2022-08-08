@@ -1,0 +1,922 @@
+// cs_sushi.c
+//
+// Written by Satwik Chemudupati z5413875
+// on 26/7/22
+//
+// TODO: Description of program
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h> 
+
+// Additional libraries here
+
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////  CONSTANTS  /////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Provided constants
+#define TRUE 1
+#define FALSE 0
+
+#define MAX_STRING_LENGTH 100
+#define EMPTY_CUSTOMER "EMPTY"
+
+#define COMMAND_ADD_TABLE 'a'
+#define COMMAND_ADD_CUSTOMER 'c'
+#define PRINT_RESTAURANT 'p'
+#define ADD_NEW_PLATE 'r'
+#define PRINT_TRAIN 't'
+#define ORDER_FOOD 'o'
+#define BILL 'b'
+#define CLOSE_RESTAURANT 'q'
+#define REVERSE 's'
+#define ROTATE 'm'
+
+// Provided Enums
+
+// the numerical value is the cost of that plate color
+enum plate_colour { RED = 3, GREEN = 4, BLUE = 5, PURPLE = 6, ORANGE = 7 };
+
+enum sushi_type { VEGETARIAN, SEAFOOD, CHICKEN, TEMPURA };
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////  STRUCTS  //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Provided structs
+struct table {
+    char customer[MAX_STRING_LENGTH];
+    struct plate *orders;
+    struct table *next;
+};
+
+struct plate {
+    char roll_name[MAX_STRING_LENGTH];
+    enum plate_colour colour;
+    enum sushi_type type;
+    struct plate *next;
+};
+
+struct restaurant {
+    struct table *tables;
+    struct plate *plates;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////  FUNCTION PROTOTYPES  ////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Helper Functions
+void print_restaurant(struct restaurant *restaurant);
+int scanf_command(char *command);
+void interpret_line(
+    char buffer[MAX_STRING_LENGTH], char name[MAX_STRING_LENGTH],
+    enum plate_colour *colour, enum sushi_type *type);
+
+void interpret_order(
+    char buffer[MAX_STRING_LENGTH], char customer[MAX_STRING_LENGTH],
+    char roll[MAX_STRING_LENGTH]);
+
+enum plate_colour string_to_colour(char colour[MAX_STRING_LENGTH]);
+enum sushi_type string_to_type(char type[MAX_STRING_LENGTH]);
+void remove_newline(char input[MAX_STRING_LENGTH]);
+char color_to_char(enum plate_colour colour);
+void to_type(char types[MAX_STRING_LENGTH], enum sushi_type type);
+void to_colour(char cols[MAX_STRING_LENGTH], enum plate_colour colour);
+struct plate *create_plate(char dish_name[MAX_STRING_LENGTH], 
+                           enum plate_colour colour, enum sushi_type type);
+void add_empty_table(struct restaurant *restaurant);
+bool add_name_empty(struct restaurant *restaurant, 
+                    char new_customer[MAX_STRING_LENGTH]);
+char *plate_colour_to_string(int plate_colour);
+char *sushi_type_to_string(int sushi_type);
+void add_new_plate(struct restaurant *restaurant, struct plate *p, 
+                   bool train_direction);
+void print_train(struct plate *plates);
+void free_restaurant(struct restaurant *sushi_restaurant);
+void add_order_to_table(struct restaurant *restaurant, struct table *curr_table, 
+                        char dish_name[MAX_STRING_LENGTH]);
+void find_order_table(struct restaurant *sushi_restaurant, 
+                      char customer[MAX_STRING_LENGTH], 
+                      char dish_name[MAX_STRING_LENGTH]);
+void close_table(struct restaurant *sushi_restaurant, 
+                 char customer[MAX_STRING_LENGTH]);
+struct plate *find_last_plate(struct plate *plates);
+void reverse_train(struct restaurant *sushi_restaurant);
+void rotate_train(struct restaurant *sushi_restaurant, int rotations);
+
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////  FUNCTION IMPLEMENTATIONS  //////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+int main(void) {
+    struct restaurant *sushi_restaurant = malloc(sizeof(struct restaurant)); 
+    sushi_restaurant->tables = NULL;
+    sushi_restaurant->plates = NULL;
+    bool train_direction = TRUE;
+
+    printf("Welcome to CSE Sushi Restaurant!\n");
+    printf("CSE Sushi Restaurant\n");
+
+    printf("Enter command: ");
+    char command;
+
+    while (scanf_command(&command) == 1) {
+        if (command == PRINT_RESTAURANT) {
+            print_restaurant(sushi_restaurant);
+        }
+
+        if (command == COMMAND_ADD_TABLE) {
+            add_empty_table(sushi_restaurant);
+        }
+        if (command == COMMAND_ADD_CUSTOMER) {
+            printf("Enter customer name: ");
+            char new_customer[MAX_STRING_LENGTH];
+            fgets(new_customer, MAX_STRING_LENGTH, stdin);
+            remove_newline(new_customer);
+            bool add = add_name_empty(sushi_restaurant, new_customer);
+            if (add == FALSE) {
+                printf("No empty tables!\n");
+            }
+        }
+        if (command == ADD_NEW_PLATE) {
+            char remaining_input[MAX_STRING_LENGTH];
+            fgets(remaining_input, MAX_STRING_LENGTH, stdin);
+
+            char dish_name[MAX_STRING_LENGTH];
+            enum plate_colour colour;
+            enum sushi_type type;
+            interpret_line(remaining_input, dish_name, &colour, &type);
+            
+            struct plate *new_plate = create_plate(dish_name, colour, type);
+            if (sushi_restaurant->plates == NULL) {
+                sushi_restaurant->plates = new_plate;
+            } else {
+                add_new_plate(sushi_restaurant, new_plate, train_direction);
+            }
+        }
+        if (command == PRINT_TRAIN) {
+            struct plate *train_plate = sushi_restaurant->plates;
+            if (sushi_restaurant->plates == NULL) {
+                printf("    empty :(\n");    
+            } else {
+                print_train(train_plate);
+            }
+        }
+        if (command == ORDER_FOOD) {
+            char remaining_input[MAX_STRING_LENGTH];
+            fgets(remaining_input, MAX_STRING_LENGTH, stdin);
+
+            char customer[MAX_STRING_LENGTH];
+            char dish_name[MAX_STRING_LENGTH];
+            interpret_order(remaining_input, customer, dish_name);
+            
+            
+            // Check if customer exists and find table
+            find_order_table(sushi_restaurant, customer, dish_name);
+            
+        }
+        if (command == BILL) {
+            printf("Enter customer name: ");
+            char customer[MAX_STRING_LENGTH];
+            fgets(customer, MAX_STRING_LENGTH, stdin);
+            remove_newline(customer);
+            
+            close_table(sushi_restaurant, customer);
+            
+        }
+        if (command == CLOSE_RESTAURANT || command == EOF) {
+            free_restaurant(sushi_restaurant);
+            printf("Thank you for dining with CSE Sushi Restaurant!\n");
+            return 0;
+        }
+        if (command == REVERSE) {
+            reverse_train(sushi_restaurant);
+            train_direction = !train_direction;
+            
+        }
+        if (command == ROTATE) {
+            char input[MAX_STRING_LENGTH];
+            fgets(input, MAX_STRING_LENGTH, stdin);
+            int rotations = atoi(input);
+            printf("%d\n", rotations);
+            rotate_train(sushi_restaurant, rotations);
+        }
+        printf ("Enter command: ");
+    }
+    free_restaurant(sushi_restaurant);
+    printf("Thank you for dining with CSE Sushi Restaurant!\n");
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// ADDITIONAL FUNCTIONS /////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void rotate_train(struct restaurant *sushi_restaurant, int rotations) {
+    struct plate *curr_plate = sushi_restaurant->plates;
+    int length = 0;
+    // count length of train 
+    while (curr_plate != NULL) {
+        length++;
+        curr_plate = curr_plate->next;
+    }
+    if (length == 0 || rotations == 0) {
+        // Do nothing
+    } else if (rotations > 0) {
+        struct plate *find_plate = sushi_restaurant->plates;
+        int modulus = rotations % length;
+        int i = 0;
+        while (i < modulus) {
+            find_plate = find_plate->next;
+            i++;
+        }
+    } else {
+        /*int modulus = rotations % length;
+        struct plate *find_plate = sushi_restaurant->plates
+        int modulus = rotations % length;
+        int i = 0;
+        while (i < modulus) {
+            find_plate = find_plate->next;
+            i++;
+        }*/
+    }
+    
+    
+    if (rotations = 0) {
+        //Nothing to rotate 
+    } else if (rotations > 0) {
+        // forward rotations
+        int i = 0;
+        while (i < rotations) {
+            if (curr_plate->next == NULL) {
+                curr_plate = sushi_restaurant->plates;
+            } else {
+                curr_plate = curr_plate->next;
+            }
+        }
+    } else {
+        // backward rotations
+        int i = 0
+        while (i > rotations)
+    }
+}
+
+
+void reverse_train(struct restaurant *sushi_restaurant) {
+    struct plate *curr_plate = sushi_restaurant->plates;
+    struct plate *prev_plate = NULL;
+    struct plate *next_plate = NULL;
+    
+    if (curr_plate == NULL) {
+        // Train is empty
+    } else if (curr_plate->next == NULL) {
+        // No need to reverse
+    } else {
+        next_plate = curr_plate->next;
+        while (next_plate != NULL) {
+            curr_plate->next = prev_plate;
+            prev_plate = curr_plate;
+            curr_plate = next_plate;
+            next_plate = next_plate->next;
+        }
+        curr_plate->next = prev_plate;
+        sushi_restaurant->plates = curr_plate;
+    }
+}
+
+// Close out a table with bill and reset
+void close_table(struct restaurant *sushi_restaurant, 
+                 char customer[MAX_STRING_LENGTH]) {
+    // Find table 
+    struct table *curr_table = sushi_restaurant->tables;
+    struct table *bill_table = NULL;
+    while (curr_table != NULL) {
+        if (strcmp(customer, curr_table->customer) == 0) {
+            bill_table = curr_table;
+        }
+        curr_table = curr_table->next;
+    }
+    if (bill_table == NULL) {
+        printf("There is no customer with that name!\n");
+    } else {
+        // Table is found. Total bill.
+        struct plate *curr_plate = bill_table->orders;
+        int total_bill = 0;
+        while (curr_plate != NULL) {
+            // Add price of each plate to total_bill
+            total_bill += curr_plate->colour;
+            // Free memory for plate
+            struct plate *free_plate = curr_plate;
+            curr_plate = curr_plate->next;
+            free(free_plate);
+        }
+        printf("Thank you for dining with CSE Sushi! ");
+        printf("Your total is: $%d\n", total_bill);
+        // Clear table
+        
+        strcpy(bill_table->customer, EMPTY_CUSTOMER);
+        bill_table->orders = NULL;
+    }
+}
+
+// Finds table with right customer name and adds order to table
+void find_order_table(struct restaurant *sushi_restaurant, 
+                      char customer[MAX_STRING_LENGTH], 
+                      char dish_name[MAX_STRING_LENGTH]) {
+    struct table *curr_table = sushi_restaurant->tables;
+    int served = 0;
+    while (curr_table != NULL && served == 0) {
+        if (strcmp(curr_table->customer, customer) == 0) {
+            add_order_to_table(sushi_restaurant, curr_table, dish_name);
+            served = 1;
+        }
+        curr_table = curr_table->next;
+    }
+    if (curr_table == NULL && served == 0) {
+        printf("There is no customer with that name!\n");
+    }
+}
+
+// Finds last order in a list
+struct plate *find_last_plate(struct plate *plates) {
+    // Loop through orders until last order
+    while (plates->next != NULL) {
+        plates = plates->next;
+    }
+    return plates;
+}
+
+
+// Adds order to table after found
+void add_order_to_table(struct restaurant *restaurant, struct table *curr_table, 
+                        char dish_name[MAX_STRING_LENGTH]) {
+                        
+    // Find dish, remove from train and add to table
+    int served = 0;
+    struct plate *curr_plate = restaurant->plates;
+    struct plate *prev_plate = NULL;
+    while (curr_plate != NULL && served == 0) {
+        if (strcmp(curr_plate->roll_name, dish_name) == 0) {
+            // Add to curr_table orders
+            struct plate *orders = curr_table->orders;
+            if (orders == NULL) {
+                // If table has no orders, add as first order
+                curr_table->orders = curr_plate;
+            } else {
+                find_last_plate(orders);
+                // Add plate to end of orders
+                orders->next = curr_plate;
+            }
+            // Remove from train
+            if (prev_plate == NULL) {
+                restaurant->plates = curr_plate->next;
+            } else {
+                prev_plate->next = curr_plate->next;
+            }
+            curr_plate->next = NULL;
+            served = 1;
+        }
+        prev_plate = curr_plate;
+        curr_plate = curr_plate->next;
+    }
+    // If no dish, make special dish and add to table
+    if (curr_plate == NULL && served == 0) {
+        printf("Enter dish details: ");
+        char dish_input[MAX_STRING_LENGTH];
+        fgets(dish_input, MAX_STRING_LENGTH, stdin);
+        char name[MAX_STRING_LENGTH];
+        enum plate_colour colour;
+        enum sushi_type type;
+        interpret_line(dish_input, name, &colour, &type);
+        
+        struct plate *new_plate = create_plate(name, colour, type);
+        // Add to curr_table orders
+        struct plate *orders = curr_table->orders;
+        if (orders == NULL) {
+            // If table has no orders, add as first order
+            curr_table->orders = new_plate;
+        } else {
+            // Loop through orders until pointing to last order
+            while (orders->next != NULL) {
+                orders = orders->next;                  
+            }
+            // Add plate to end of orders
+            orders->next = new_plate;
+        }
+        served = 1;
+    }
+}
+
+// Free all memory
+void free_restaurant(struct restaurant *sushi_restaurant) {
+    struct table *curr_table = sushi_restaurant->tables;
+    while (curr_table != NULL) {
+        // Free orders
+        struct plate *curr_plate = curr_table->orders;
+        while (curr_plate != NULL) {
+            struct plate *free_plate = curr_plate;
+            curr_plate = curr_plate->next;
+            free(free_plate);
+        }
+        curr_table->orders = NULL;
+        // Free tables
+        struct table *free_table = curr_table;
+        curr_table = curr_table->next;
+        free(free_table);
+    }
+    
+    // Free plates
+    struct plate *curr_plate = sushi_restaurant->plates;
+    while (curr_plate != NULL) {
+        struct plate *free_plate = curr_plate;
+        curr_plate = curr_plate->next;
+        free(free_plate);
+    } 
+    free(sushi_restaurant);
+}
+
+// Creates and returns pointer to new plate
+struct plate *create_plate(char dish_name[MAX_STRING_LENGTH], 
+                           enum plate_colour colour, enum sushi_type type) {
+    struct plate *new_plate = malloc(sizeof(struct plate));
+    strcpy(new_plate->roll_name, dish_name);
+    new_plate->type = type;
+    new_plate->colour = colour;
+    new_plate->next = NULL;
+    
+    return new_plate;
+}
+
+// Creates new empty table
+void add_empty_table(struct restaurant *restaurant) {
+    struct table *new_table = malloc(sizeof(struct table));
+    strcpy(new_table->customer, EMPTY_CUSTOMER);
+    new_table->next = NULL;
+    new_table->orders = NULL;
+    
+    if (restaurant->tables == NULL) {
+        restaurant->tables = new_table;
+    } else {
+        struct table *node = restaurant->tables;
+        while (node->next != NULL) {
+            node = node->next;
+        }
+        node->next = new_table;
+    }
+}
+
+// Adds customer to empty table or returns false
+bool add_name_empty(struct restaurant *restaurant, 
+                    char new_customer[MAX_STRING_LENGTH]) {
+    struct table *node = restaurant->tables;
+
+    while (node != NULL) {
+        if (strcmp(node->customer, EMPTY_CUSTOMER) == 0) {
+            strcpy(node->customer, new_customer);
+            return TRUE;
+        }   
+        node = node->next;
+    }
+
+    return FALSE;
+}
+
+// Inserts new plate in correct position in list
+void add_new_plate(struct restaurant *restaurant, struct plate *p, 
+                   bool train_direction) {
+    struct plate *current_plate = restaurant->plates;
+    struct plate *previous_plate = NULL;
+    // When this is the first plate
+    if (current_plate == NULL) {
+        current_plate = p;
+        current_plate->next = NULL;
+    } else {
+        // If not the first plate, find correct plate
+        // Iterate until curr is last plate in train or 
+        // curr is just bigger than new
+        if (train_direction) {
+            while (p->type >= current_plate->type && current_plate->next != NULL) {
+                previous_plate = current_plate;
+                current_plate = current_plate->next;
+            }
+            if (previous_plate == NULL) {
+                p->next = current_plate;
+                restaurant->plates = p;
+            } else if (p->type >= current_plate->type) {
+                current_plate->next = p;
+            } else {
+                previous_plate->next = p;
+                p->next = current_plate;
+            }
+        } else {
+            while (current_plate->type >= p->type && current_plate->next != NULL) {
+                previous_plate = current_plate;
+                current_plate = current_plate->next;
+            }
+            if (previous_plate == NULL) {
+                p->next = current_plate;
+                restaurant->plates = p;
+            } else if (current_plate->type >= p->type) {
+                current_plate->next = p;
+            } else {
+                previous_plate->next = p;
+                p->next = current_plate;
+            }
+        }
+    }
+}
+
+// Converts plate colour to string
+char *plate_colour_to_string(int plate_colour) {
+    if (plate_colour == 3) {
+        return "red";
+    } else if (plate_colour == 4) {
+        return "green";
+    } else if (plate_colour == 5) {
+        return "blue";
+    } else if (plate_colour == 6) {
+        return "purple";
+    } else {
+        return "orange";
+    } 
+}
+
+// Converts sushi type input to string
+char *sushi_type_to_string(int sushi_type) {
+    if (sushi_type == 0) {
+        return "vegetarian";
+    } else if (sushi_type == 1) {
+        return "seafood";
+    } else if (sushi_type == 2) {
+        return "chicken";
+    } else {
+        return "tempura"; 
+    }
+}
+
+
+// Prints sushi train if given a non-empty restaurant
+void print_train(struct plate *plates) {
+    while (plates) {
+        char *colour = plate_colour_to_string(plates->colour);
+        char *type = sushi_type_to_string(plates->type);
+        printf("    %s-%s-%s\n", plates->roll_name, type, colour);
+        printf("      |\n");
+        printf("      v\n");
+        plates = plates->next;
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////// PROVIDED FUNCTIONS //////////////////////////////
+/////////////////////////// (DO NOT EDIT BELOW HERE) ///////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Provided Function - DO NOT EDIT
+void print_restaurant(struct restaurant *restaurant) {
+    int i;
+    if (restaurant == NULL) {
+        printf("ERROR: No restaurant!\n");
+        return;
+    };
+
+    printf("CSE Sushi Restaurant\n");
+    struct table *table = restaurant->tables;
+    int table_num = 0;
+    while (table != NULL) {
+        int table_length = 5;
+        if (strcmp(table->customer, EMPTY_CUSTOMER) != 0) {
+            table_length = strlen(table->customer) + 4;
+        }
+        // calculate number of plates
+        int number_of_plates = 0;
+        struct plate *curr = table->orders;
+        while (curr != NULL) {
+            number_of_plates++;
+            curr = curr->next;
+        }
+
+        printf(" ");
+        for (i = 0; i < table_length; i++) {
+            printf("_");
+        }
+        printf(" ");
+
+        // print out the top row
+        for (i = 0; i < number_of_plates; i++) {
+            printf("    _____ ");
+        }
+
+        printf("\n");
+
+        // print out the data
+        int occupied = FALSE;
+        if (strcmp(table->customer, "EMPTY") != 0) {
+            occupied = TRUE;
+        }
+        if (occupied) {
+            printf("|  %s  |-->", table->customer);
+        } else {
+            printf("|  %d  |-->", table_num);
+        }
+
+        // print out the plates
+        struct plate *order = table->orders;
+        while (order != NULL) {
+            printf("|  %c  |-->", color_to_char(order->colour));
+
+            order = order->next;
+        }
+
+        printf("\n");
+        printf(".");
+        for (i = 0; i < table_length; i++) {
+            printf("-");
+        }
+        printf(".");
+        // print out the top row
+        for (i = 0; i < number_of_plates; i++) {
+            printf("   |-----|");
+        }
+
+        printf("\n");
+        table = table->next;
+        table_num++;
+    }
+}
+
+// Helper Function
+// scans a single character from the user and returns the value of scanf;
+//
+// Parameters:
+//  - command: a pointer to a character to store the command
+//
+// Returns:
+//  - the value that scanf returns (this will be 1 if it was successfully read);
+//
+// Usage:
+//  ```
+//  char command;
+//  while (scanf_command(&command) == 1) {
+//  ```
+// this function does some wizadry that you **do not need to understand**
+// for you to ensure that subsequent
+// calls to fgets works correctlly.
+int scanf_command(char *command) {
+    // read in character + newline + null-terminator
+    char buffer[3];
+    char *result = fgets(buffer, 3, stdin);
+    if (result == NULL) {
+        return EOF;
+    }
+
+    // a non a-z character probably means not a char
+    if (buffer[0] < 'a' || buffer[0] > 'z') {
+        return EOF;
+    }
+
+    // set the character
+    *command = buffer[0];
+    return 1;
+}
+
+// Helper Function
+// You DO NOT NEED TO UNDERSTAND THIS FUNCTION, and will not need to change it.
+//
+// Given a raw string in the format: [string] [enum1] [enum2]
+// This function will extract the relevant values into the given variables.
+// The function will also remove any newline characters.
+//
+// For example, if given: "salmon red seafood"
+// The function will copy the string:
+//     "salmon" into the 'name' array
+// And will copy the enums:
+//     red      into the colour pointer
+//     seafood  into the type pointer
+//
+// If you are interested, `strtok` is a function which takes a string,
+// and splits it up into before and after a "token" (the second argument)
+//
+// Parameters:
+//     buffer  = A null terminated string in the following format
+//               [string] [enum1] [enum2]
+//     name    = An array for the [string] to be copied into
+//     colour  = A pointer to where [enum1] should be stored
+//     type    = A pointer to where [enum2] should be stored
+// Returns:
+//     None
+void interpret_line(
+    char buffer[MAX_STRING_LENGTH], char name[MAX_STRING_LENGTH],
+    enum plate_colour *colour, enum sushi_type *type) {
+    // Remove extra newline
+    remove_newline(buffer);
+
+    // Extract value 1 as string (sushi roll name)
+    char *name_str = strtok(buffer, " ");
+    if (name_str != NULL) {
+        // Extract word
+        strcpy(name, name_str);
+    }
+
+    // Extract value 2 as str, then enum
+    char *colour_str = strtok(NULL, " ");
+    if (colour_str != NULL) {
+        *colour = string_to_colour(colour_str);
+    }
+
+    // Extract value 2 as str, then enum
+    char *type_str = strtok(NULL, " ");
+    if (type_str != NULL) {
+        *type = string_to_type(type_str);
+    }
+
+    if (name_str == NULL || colour_str == NULL || type_str == NULL) {
+        // If any of these are null, there were not enough words.
+        printf("Could not properly interpret line: %s.\n", buffer);
+    }
+}
+
+// Helper Function
+// You DO NOT NEED TO UNDERSTAND THIS FUNCTION, and will not need to change it.
+//
+// Given a raw string in the following foramt: [string1] [string2]
+// This function will extract the relevant values into the given variables.
+// The function will also remove any newline characters.
+//
+// For example, if given: "Gab salmon"
+// The function will put:
+//     "Gab" into the 'customer' array
+//     "salmon" into the 'roll' array
+//
+// Parameters:
+//     buffer   = A null terminated string in the following format
+//                [string1] [string2]
+//     customer = An array for the [string1] to be copied into
+//     roll     = An array for the [string2] to be copied into
+// Returns:
+//     None
+void interpret_order(
+    char buffer[MAX_STRING_LENGTH], char customer[MAX_STRING_LENGTH],
+    char roll[MAX_STRING_LENGTH]) {
+    // Remove extra newline
+    remove_newline(buffer);
+
+    // Extract value 1 as string
+    char *customer_str = strtok(buffer, " ");
+    if (customer_str != NULL) {
+        strcpy(customer, customer_str);
+    }
+
+    // Extract value 2 as string
+    char *roll_str = strtok(NULL, " ");
+    if (roll_str != NULL) {
+        strcpy(roll, roll_str);
+    }
+
+    if (customer_str == NULL || roll_str == NULL) {
+        // If any of these are null, there were not enough words.
+        printf("Could not properly interpret line: %s.\n", buffer);
+    }
+}
+
+// Helper Function
+// You likely do not need to change this function.
+//
+// Given a raw string will remove and first newline it sees.
+// The newline character wil be replaced with a null terminator ('\0')
+void remove_newline(char input[MAX_STRING_LENGTH]) {
+    // Find the newline or end of string
+    int index = 0;
+    while (input[index] != '\n' && input[index] != '\0') {
+        index++;
+    }
+    // Goto the last position in the array and replace with '\0'
+    // Note: will have no effect if already at null terminator
+    input[index] = '\0';
+}
+
+// Helper Function
+// You likely do not need to change this function.
+//
+// Given an enum plate_colour will return the first letter of enum, or ? if the
+// value is not one of the plate_colour values.
+// Parameters:
+//     colour  = enum plate_colour for a plate
+// Returns:
+//     char    = character represtning the first letter of the plate colour
+char color_to_char(enum plate_colour colour) {
+    if (colour == RED) {
+        return 'r';
+    } else if (colour == GREEN) {
+        return 'g';
+    } else if (colour == BLUE) {
+        return 'b';
+    } else if (colour == PURPLE) {
+        return 'p';
+    } else if (colour == ORANGE) {
+        return 'o';
+    } else {
+        return '?';
+    }
+}
+
+// Helper Function
+// You likely do not need to change this function.
+//
+// Given a raw string will return the corresponding enum plate_colour, or FALSE
+// if the string doesn't correspond with the enums.
+// Parameters:
+//     colour  = string representing the corresponding enum plate_colour value
+// Returns:
+//     enum plate_colour
+enum plate_colour string_to_colour(char colour[MAX_STRING_LENGTH]) {
+    if (strcmp(colour, "red") == 0) {
+        return RED;
+    } else if (strcmp(colour, "green") == 0) {
+        return GREEN;
+    } else if (strcmp(colour, "blue") == 0) {
+        return BLUE;
+    } else if (strcmp(colour, "purple") == 0) {
+        return PURPLE;
+    } else if (strcmp(colour, "orange") == 0) {
+        return ORANGE;
+    }
+    return FALSE;
+}
+
+// Helper Function
+// You likely do not need to change this function.
+//
+// Given a raw string will return the corresponding enum sushi_type, or FALSE
+// if the string doesn't correspond with the enums.
+// Parameters:
+//     type  = string representing the corresponding enum sushi_type value
+// Returns:
+//     enum sushi_type
+enum sushi_type string_to_type(char type[MAX_STRING_LENGTH]) {
+    if (strcmp(type, "vegetarian") == 0) {
+        return VEGETARIAN;
+    } else if (strcmp(type, "seafood") == 0) {
+        return SEAFOOD;
+    } else if (strcmp(type, "chicken") == 0) {
+        return CHICKEN;
+    } else if (strcmp(type, "tempura") == 0) {
+        return TEMPURA;
+    }
+    return FALSE;
+}
+
+// Helper Function
+// You likely do not need to change this function.
+//
+// Given an enum sushi_type will return the enum name as a string, or "ERROR" if
+// the value was not one of the given enums.
+// Parameters:
+//     types  = string to store the name of the enum in
+//     type   = sushi_type enum to have the name stored in types.
+// Returns:
+//     None
+void to_type(char types[MAX_STRING_LENGTH], enum sushi_type type) {
+    if (type == VEGETARIAN) {
+        strcpy(types, "vegetarian");
+    } else if (type == SEAFOOD) {
+        strcpy(types, "seafood");
+    } else if (type == CHICKEN) {
+        strcpy(types, "chicken");
+    } else if (type == TEMPURA) {
+        strcpy(types, "tempura");
+    } else {
+        strcpy(types, "ERROR");
+    }
+}
+
+// Helper Function
+// You likely do not need to change this function.
+//
+// Given an enum plate_colour will return the enum name as a string, or "ERROR"
+// if the value was not one of the given enums.
+// Parameters:
+//     cols   = string to store the name of the enum in
+//     colour = plate_colour enum to have the name stored in cols
+// Returns:
+//     None
+void to_colour(char cols[MAX_STRING_LENGTH], enum plate_colour colour) {
+    if (colour == RED) {
+        strcpy(cols, "red");
+    } else if (colour == BLUE) {
+        strcpy(cols, "blue");
+    } else if (colour == GREEN) {
+        strcpy(cols, "green");
+    } else if (colour == PURPLE) {
+        strcpy(cols, "purple");
+    } else if (colour == ORANGE) {
+        strcpy(cols, "orange");
+    } else {
+        strcpy(cols, "ERROR");
+    }
+}
+
